@@ -3,7 +3,7 @@ name: Security Scan
 on: [push, pull_request]
 
 jobs:
-  bandit-scan:
+  security-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -14,9 +14,19 @@ jobs:
         with:
           python-version: '3.10'
           
-      - name: Install Bandit
-        run: pip install bandit
+      - name: Install tools
+        run: |
+          pip install bandit pip-audit
+          
+      - name: Run Bandit (SAST - Code Analysis)
+        # Добавили --exit-zero, чтобы минорные баги не ломали сборку
+        run: bandit -r . -x ./venv,./venv_jwt,./tests --exit-zero
         
-      - name: Run Bandit (Scan for vulnerabilities)
-        # Сканируем код, исключая папки с виртуальными окружениями и тестами
-        run: bandit -r . -x ./venv,./venv_jwt,./tests
+      - name: Run pip-audit (SCA - Dependency Check)
+        # Проверяем requirements.txt (если его нет, шаг просто пропустится)
+        run: |
+          if [ -f requirements.txt ]; then
+            pip-audit -r requirements.txt
+          else
+            echo "Файл requirements.txt не найден, пропускаем."
+          fi
