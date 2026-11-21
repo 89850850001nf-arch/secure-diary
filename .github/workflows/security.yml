@@ -3,30 +3,54 @@ name: Security Scan
 on: [push, pull_request]
 
 jobs:
-  security-scan:
+  # 1. Статический анализ кода и зависимостей
+  sast-sca:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-          
       - name: Install tools
-        run: |
-          pip install bandit pip-audit
-          
-      - name: Run Bandit (SAST - Code Analysis)
-        # Добавили --exit-zero, чтобы минорные баги не ломали сборку
+        run: pip install bandit pip-audit
+      - name: Run Bandit (SAST)
         run: bandit -r . -x ./venv,./venv_jwt,./tests --exit-zero
-        
-      - name: Run pip-audit (SCA - Dependency Check)
-        # Проверяем requirements.txt (если его нет, шаг просто пропустится)
+      - name: Run pip-audit (SCA)
         run: |
           if [ -f requirements.txt ]; then
             pip-audit -r requirements.txt
           else
-            echo "Файл requirements.txt не найден, пропускаем."
+            echo "requirements.txt not found"
           fi
+
+  # 2. Поиск секретов и паролей
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Важно для сканирования всей истории коммитов
+      - name: TruffleHog Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ""
+          head: HEAD
+          extra_args: --only-verified # Ищем только реальные рабочие ключи
+
+  # 3. Безопасность Docker-контейнера
+  docker-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Run Trivy (Config Scan)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          hide-progress: true
+          format: 'table'
+          exit-code: '1' # Падаем, если найдены критические мисконфиги
+          severity: 'CRITICAL,HIGH'
